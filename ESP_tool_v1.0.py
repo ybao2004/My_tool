@@ -197,7 +197,7 @@ def get_chip_data(chip_name_key):
 class InspectorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Tool điều kiển MCU ESP v1.0")
+        self.root.title("ESP_tool_v1.0")
         self.root.geometry(DEFAULT_GEOMETRY)
         
         self.stop_scan = threading.Event()
