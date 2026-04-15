@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chuyển đổi PDF sang ảnh (Web Version)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        /* CSS Giao diện Material Flat */
+        :root {
+            --bg-color: #f4f5f7;
+            --text-color: #202124;
+            --card-bg: #ffffff;
+            --border-color: #dadce0;
+            --primary-blue: #1a73e8;
+            --primary-fg: #ffffff;
+            --inactive-bg: #e8eaed;
+            --inactive-fg: #5f6368;
+            --success-color: #188038;
+            --error-color: #d93025;
+            --detail-color: #e65100;
+            --log-time: #80868b;
+            --modal-bg: rgba(0,0,0,0.5);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #202124;
+            --text-color: #e8eaed;
+            --card-bg: #292a2d;
+            --border-color: #444746;
+            --primary-blue: #8ab4f8;
+            --primary-fg: #202124;
+            --inactive-bg: #3c4043;
+            --inactive-fg: #9aa0a6;
+            --success-color: #81c995;
+            --error-color: #f28b82;
+            --detail-color: #ffb74d;
+            --log-time: #9aa0a6;
+            --modal-bg: rgba(0,0,0,0.7);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1240px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        fieldset {
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: var(--card-bg);
+            padding: 15px 20px;
+            margin: 0;
+        }
+
+        legend {
+            font-weight: bold;
+            font-size: 14px;
+            padding: 0 5px;
+            color: var(--text-color);
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .row:last-child { margin-bottom: 0; }
+
+        input[type="file"], select, input[type="number"] {
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            font-family: inherit;
+        }
+
+        button {
+            padding: 6px 15px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        button:hover:not(:disabled) { background: var(--border-color); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-format { font-weight: bold; width: 60px; background: var(--inactive-bg); color: var(--inactive-fg); border: none; }
+        .btn-format.active { background: var(--primary-blue); color: var(--primary-fg); }
+        
+        .btn-primary { background: var(--primary-blue); color: var(--primary-fg); font-weight: bold; border: none;}
+        .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+        #log-area {
+            height: 350px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .log-success { color: var(--success-color); font-weight: bold; }
+        .log-error { color: var(--error-color); font-weight: bold; }
+        .log-detail { color: var(--detail-color); }
+        .log-time { color: var(--log-time); }
+
+        /* Modal Thông tin */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-bg); align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); min-width: 300px; text-align: center; }
+    </style>
+</head>
+<body data-theme="dark"> <div class="container">
+    <fieldset>
+        <legend> Cấu hình Đường dẫn & Hệ thống </legend>
+        <div class="row">
+            <button onclick="document.getElementById('file-input').click()">Chọn File</button>
+            <button onclick="document.getElementById('folder-input').click()">Chọn Thư mục</button>
+            
+            <input type="file" id="file-input" accept=".pdf" multiple style="display:none" onchange="updateFileList(this)">
+            <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="updateFileList(this)">
+            
+            <span id="file-status" style="font-weight: bold; color: var(--primary-blue);">Chưa chọn file nào</span>
+
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button onclick="toggleTheme()">Sáng / Tối</button>
+                <button onclick="showAbout()">Thông tin</button>
+            </div>
+        </div>
+        <div class="row" style="margin-top: 15px;">
+            <label style="font-weight: 500;">Phương thức Lưu (Đầu ra):</label>
+            <select id="output-mode" style="width: 250px;">
+                <option value="individual">Tải tự động từng file riêng lẻ</option>
+                <option value="zip">Đóng gói thành 1 file .ZIP</option>
+            </select>
+            <span style="font-style: italic; font-size: 12px; color: var(--inactive-fg);">*Lưu ý: Tải từng file có thể bị trình duyệt hỏi quyền "Cho phép tải nhiều tệp".</span>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend> Cấu hình Ảnh & Chuyển đổi </legend>
+        <div class="row">
+            <button id="btn-png" class="btn-format active" onclick="setFormat('PNG')">PNG</button>
+            <button id="btn-jpg" class="btn-format" onclick="setFormat('JPG')">JPG</button>
+            
+            <label style="margin-left: 20px;">Chiều cao tối đa:</label>
+            <select id="max-height">
+                <option value="720">720px</option>
+                <option value="1280">1280px</option>
+                <option value="2000">2000px</option>
+                <option value="3000" selected>3000px</option>
+                <option value="4000">4000px</option>
+                <option value="4000">5000px</option>
+            </select>
+
+            <label style="margin-left: 20px;">Chất lượng JPG (%):</label>
+            <input type="number" id="quality" value="100" min="5" max="100" step="5" style="width: 60px;">
+
+            <button id="start-btn" onclick="processPdfs()" style="margin-left: auto; font-weight: bold; padding: 8px 20px;">BẮT ĐẦU CHUYỂN ĐỔI</button>
+            <button id="download-btn" class="btn-primary" onclick="executeDownload()" style="padding: 8px 20px; display: none;">TẢI VỀ KẾT QUẢ</button>
+        </div>
+    </fieldset>
+
+    <fieldset style="flex-grow: 1; display: flex; flex-direction: column;">
+        <legend> Log hệ thống </legend>
+        <div id="log-area"></div>
+    </fieldset>
+</div>
+
+<div id="about-modal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin-top: 0;">Thông tin phần mềm</h3>
+        <p>Bị rảnh nên làm ra cái này</p>
+        <hr style="border-color: var(--border-color); opacity: 0.5;">
+        <p>Phiên bản: 1.0 (Web Edition)</p>
+        <p>Tác giả: @ybao</p>
+        <p>Ngày tạo: 15.04.2025</p>
+        <button class="btn-primary" style="margin-top: 15px; width: 100%;" onclick="closeAbout()">Đóng</button>
+    </div>
+</div>
+
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let currentFormat = 'PNG';
+    let isProcessing = false;
+    let selectedFiles = [];     // Danh sách file PDF gốc
+    let convertedImages = [];   // Danh sách file Ảnh đã chuyển (chờ tải xuống)
+
+    // --- GIAO DIỆN & SETTINGS ---
+    function toggleTheme() {
+        const body = document.body;
+        const newTheme = body.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        body.setAttribute('data-theme', newTheme);
+    }
+
+    function showAbout() { document.getElementById('about-modal').style.display = 'flex'; }
+    function closeAbout() { document.getElementById('about-modal').style.display = 'none'; }
+
+    function setFormat(fmt) {
+        if(isProcessing) return;
+        currentFormat = fmt;
+        document.getElementById('btn-png').classList.toggle('active', fmt === 'PNG');
+        document.getElementById('btn-jpg').classList.toggle('active', fmt === 'JPG');
+    }
+
+    // --- XỬ LÝ ĐẦU VÀO ---
+    function updateFileList(inputElement) {
+        let files = Array.from(inputElement.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+        if (files.length > 0) {
+            selectedFiles = files;
+            document.getElementById('file-status').innerText = `Đã chọn ${files.length} file PDF`;
+            writeSimpleLog(`[*] Đã nạp ${files.length} file PDF sẵn sàng xử lý.`);
+            
+            // Reset trạng thái tải về nếu chọn file mới
+            document.getElementById('download-btn').style.display = 'none';
+            convertedImages = [];
+        } else {
+            alert("Không tìm thấy file PDF nào hợp lệ!");
+        }
+        // Xóa giá trị input để có thể chọn lại chính thư mục/file đó nếu cần
+        inputElement.value = ''; 
+    }
+
+    // --- LOGGING ---
+    function writeSimpleLog(message) {
+        const logArea = document.getElementById('log-area');
+        logArea.innerHTML += `${message}\n`;
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function writeLog(filename, status, detail) {
+        const logArea = document.getElementById('log-area');
+        const now = new Date();
+        const ms = String(now.getMilliseconds()).padStart(3, '0');
+        const timeStr = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}_${ms}]`;
+        
+        const statusClass = status.includes('Thành công') ? 'log-success' : 'log-error';
+        const logEntry = document.createElement('div');
+        // Viết liền trên 1 dòng để tránh CSS "pre-wrap" tạo ra khoảng trắng và ngắt dòng thừa
+        logEntry.innerHTML = `<span class="log-time">${timeStr} </span><span>${filename} - </span><span class="${statusClass}">${status}</span><span class="log-detail"> ${detail}</span>`;
+        logArea.appendChild(logEntry);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // --- XỬ LÝ LÕI ---
+    function canvasToBlobAsync(canvas, mimeType, quality) {
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+        });
+    }
+
+    async function processPdfs() {
+        if (selectedFiles.length === 0) {
+            alert("Vui lòng chọn file hoặc thư mục PDF trước!");
+            return;
+        }
+
+        if (isProcessing) return;
+        isProcessing = true;
+        convertedImages = []; // Xóa data cũ
+        
+        document.getElementById('start-btn').disabled = true;
+        document.getElementById('start-btn').innerText = "ĐANG XỬ LÝ...";
+        document.getElementById('download-btn').style.display = 'none';
+        document.getElementById('log-area').innerHTML = ""; 
+
+        const maxHeight = parseInt(document.getElementById('max-height').value) || 3000;
+        const qualityVal = parseInt(document.getElementById('quality').value) || 100;
+        const qualityFloat = currentFormat === 'JPG' ? (qualityVal / 100) : 1.0;
+        const mimeType = currentFormat === 'JPG' ? 'image/jpeg' : 'image/png';
+        const ext = currentFormat.toLowerCase();
+
+        writeSimpleLog(`[*] Bắt đầu xử lý ${selectedFiles.length} file... Xin vui lòng không đóng trình duyệt.\n`);
+
+        try {
+            for (const file of selectedFiles) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const totalPages = pdfDoc.numPages;
+                
+                let baseName = file.name.replace(/\.[^/.]+$/, "");
+                let n = 40; 
+                let displayName = baseName.length > n ? baseName.substring(0, n-10) + "..." + baseName.slice(-7) : baseName;
+
+                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                    const page = await pdfDoc.getPage(pageNum);
+                    let unscaledViewport = page.getViewport({ scale: 1.0 });
+                    let scale = maxHeight / unscaledViewport.height;
+                    let viewport = page.getViewport({ scale: scale });
+
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    ctx.fillStyle = "white";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                    const blob = await canvasToBlobAsync(canvas, mimeType, qualityFloat);
+                    
+                    let outName = totalPages > 1 ? `${baseName}_trang ${pageNum}.${ext}` : `${baseName}.${ext}`;
+                    let logOutName = totalPages > 1 ? `${displayName}_trang ${pageNum}.${ext}` : `${displayName}.${ext}`;
+                    
+                    // Lưu vào RAM chờ tải xuống
+                    convertedImages.push({ name: outName, blob: blob });
+
+                    let formatInfo = currentFormat === 'JPG' ? `JPEG (${qualityVal}%)` : 'PNG';
+                    let detailStr = `${Math.round(viewport.width)} x ${Math.round(viewport.height)} _ ${formatInfo}`;
+                    writeLog(logOutName, "Thành công", detailStr);
+                }
+            }
+
+            if (convertedImages.length > 0) {
+                writeSimpleLog(`\n--- ĐÃ HOÀN TẤT CHUYỂN ĐỔI ---`);
+                writeSimpleLog(`[*] Tổng cộng: ${convertedImages.length} ảnh. Vui lòng bấm nút 'TẢI VỀ KẾT QUẢ' để lưu vào máy.`);
+                
+                // Hiển thị nút Tải về
+                document.getElementById('download-btn').style.display = 'inline-block';
+                document.getElementById('download-btn').innerText = `TẢI VỀ (${convertedImages.length} ẢNH)`;
+            }
+
+        } catch (error) {
+            writeSimpleLog(`\nLỖI HỆ THỐNG: ${error.message}`);
+        } finally {
+            isProcessing = false;
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('start-btn').innerText = "1. BẮT ĐẦU CHUYỂN ĐỔI";
+        }
+    }
+
+    // --- XỬ LÝ TẢI VỀ THỦ CÔNG ---
+    async function executeDownload() {
+        if (convertedImages.length === 0) return;
+        
+        const mode = document.getElementById('output-mode').value;
+        const downloadBtn = document.getElementById('download-btn');
+        downloadBtn.disabled = true;
+        downloadBtn.innerText = "ĐANG LƯU...";
+
+        if (mode === 'zip') {
+            writeSimpleLog(`\n[*] Đang nén file ZIP...`);
+            const zip = new JSZip();
+            convertedImages.forEach(img => zip.file(img.name, img.blob));
+            
+            const zipContent = await zip.generateAsync({ type: "blob" });
+            saveAs(zipContent, "PDF_to_IMAGE_Export.zip");
+            writeSimpleLog(`[*] Đã tải xuống file ZIP thành công.`);
+            
+        } else if (mode === 'individual') {
+            writeSimpleLog(`\n[*] Bắt đầu tải từng file. Nếu trình duyệt hỏi, vui lòng cấp quyền "Allow multiple downloads".`);
+            
+            // Dùng đệ quy hoặc setTimeout để tránh nghẽn luồng trình duyệt
+            for (let i = 0; i < convertedImages.length; i++) {
+                saveAs(convertedImages[i].blob, convertedImages[i].name);
+                // Tạo độ trễ nhỏ 100ms giữa các lần tải để trình duyệt kịp xử lý
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+            }
+            writeSimpleLog(`[*] Đã gửi lệnh tải toàn bộ ${convertedImages.length} file.`);
+        }
+
+        downloadBtn.disabled = false;
+        downloadBtn.innerText = `TẢI VỀ (${convertedImages.length} ẢNH)`;
+    }
+</script>
+
+</body>
+</html>
